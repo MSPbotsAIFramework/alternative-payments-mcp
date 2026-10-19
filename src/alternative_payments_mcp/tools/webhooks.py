@@ -101,7 +101,10 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         )
     )
     async def ap_retry_webhooks() -> str:
-        """Re-send all failed webhook deliveries."""
+        """Re-send all failed webhook deliveries.
+
+        Re-sends every failed delivery at once; only when the user explicitly asks.
+        """
 
         async def action(client: AltPayClient) -> Any:
             result = unwrap(await client.post("/webhooks/retry"))
