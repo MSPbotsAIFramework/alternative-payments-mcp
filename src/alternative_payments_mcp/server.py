@@ -72,7 +72,8 @@ def get_client_from_context() -> AltPayClient | None:
 class GatewayCredentialsMiddleware:
     """Reads X-Alternative-Payments-* headers on /mcp requests into the request context.
 
-    Missing required headers -> 401 listing them; unknown environment -> 400.
+    Missing required headers -> 401 listing them. An unknown environment does not block
+    the request (tools/list must work with any values); tools report it instead.
     """
 
     def __init__(self, app: ASGIApp):
@@ -101,19 +102,13 @@ class GatewayCredentialsMiddleware:
             )(scope, receive, send)
             return
 
+        header_error = None
         if environment not in ENVIRONMENT_BASE_URLS:
-            await JSONResponse(
-                {
-                    "error": "Invalid environment",
-                    "message": f"{HEADER_ENVIRONMENT} must be one of: {', '.join(ENVIRONMENT_BASE_URLS)}",
-                    "allowed_values": list(ENVIRONMENT_BASE_URLS),
-                },
-                status_code=400,
-            )(scope, receive, send)
-            return
+            header_error = f"{HEADER_ENVIRONMENT} must be one of: {', '.join(ENVIRONMENT_BASE_URLS)}"
+            environment = DEFAULT_ENVIRONMENT
 
         request_id = (request.headers.get("x-request-id") or "").strip()[:64] or uuid.uuid4().hex[:12]
-        creds_token = _credentials_var.set(AltPayCredentials(client_id, client_secret, environment))
+        creds_token = _credentials_var.set(AltPayCredentials(client_id, client_secret, environment, header_error))
         rid_token = request_id_var.set(request_id)
         try:
             await self.app(scope, receive, send)

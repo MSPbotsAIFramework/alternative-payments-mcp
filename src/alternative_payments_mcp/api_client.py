@@ -86,6 +86,9 @@ class AltPayCredentials:
     client_id: str
     client_secret: str
     environment: str = DEFAULT_ENVIRONMENT
+    # Set when a header value is malformed: tools then return invalid_argument
+    # instead of calling Alternative Payments, while tools/list still works.
+    header_error: str | None = None
 
     def __repr__(self) -> str:  # never leak secrets into logs or tracebacks
         return f"AltPayCredentials(client_id=<redacted>, client_secret=<redacted>, environment={self.environment!r})"
@@ -101,6 +104,7 @@ class AltPayClient:
     def __init__(self, credentials: AltPayCredentials, http_client: httpx.AsyncClient | None = None):
         self._credentials = credentials
         self._http = http_client
+        self.header_error = credentials.header_error
         self._access_token: str | None = None
         self.base_url = ENVIRONMENT_BASE_URLS[credentials.environment]
 

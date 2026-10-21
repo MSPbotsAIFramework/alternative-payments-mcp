@@ -31,7 +31,8 @@ Where to get them:
 - **Environment**: use `demo` for a sandbox API key.
 
 A request to `/mcp` without the required headers gets HTTP 401 with the list of required
-headers; an unknown environment gets HTTP 400.
+headers; an unknown environment does not block the request, and tools return
+`invalid_argument` instead.
 
 ## Tools
 

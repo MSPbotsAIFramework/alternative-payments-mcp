@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Credential middleware: 401 on missing headers, environment, isolation."""
+"""Credential middleware: 401 on missing headers, deferred header errors, environment, isolation."""
 
 import asyncio
 
@@ -52,12 +52,27 @@ def test_missing_header_returns_401(drop):
     assert drop in resp.json()["message"]
 
 
-def test_unknown_environment_returns_400():
-    headers = MCP_HEADERS | CREDS | {"X-Alternative-Payments-Environment": "staging"}
+def test_placeholder_headers_still_list_tools():
+    # The admin console refreshes the tool catalog with placeholder header values.
+    headers = {
+        "X-Alternative-Payments-Client-Id": "placeholder",
+        "X-Alternative-Payments-Client-Secret": "placeholder",
+        "X-Alternative-Payments-Environment": "placeholder",
+    }
     with _client() as client:
-        resp = client.post("/mcp", json=LIST_TOOLS, headers=headers)
-    assert resp.status_code == 400
-    assert resp.json()["allowed_values"] == ["production", "demo"]
+        resp = client.post("/mcp", json=LIST_TOOLS, headers=MCP_HEADERS | headers)
+    assert resp.status_code == 200
+    assert "ap_list_invoices" in resp.text
+
+
+def test_unknown_environment_is_reported_by_tools():
+    headers = MCP_HEADERS | CREDS | {"X-Alternative-Payments-Environment": "staging"}
+    call = {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "ap_status", "arguments": {}}}
+    with _client() as client:
+        resp = client.post("/mcp", json=call, headers=headers)
+    assert resp.status_code == 200
+    message = "X-Alternative-Payments-Environment must be one of: production, demo"
+    assert '\\"invalid_argument\\"' in resp.text and message in resp.text
 
 
 def test_tools_list_over_http():
@@ -101,6 +116,7 @@ def test_environment_selects_host(value, host):
     headers = BASE + ([(b"x-alternative-payments-environment", value)] if value is not None else [])
     seen = _run_middleware(headers)
     assert seen["client"].base_url == f"https://{host}"
+    assert seen["client"].header_error is None
     assert _credentials_var.get() is None
 
 
