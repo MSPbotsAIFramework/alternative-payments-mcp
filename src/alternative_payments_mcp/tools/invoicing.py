@@ -27,6 +27,7 @@ from ._common import (
     After,
     ClientFactory,
     Limit,
+    enum_value,
     list_result,
     page_params,
     path_id,
@@ -36,6 +37,7 @@ from ._common import (
 
 InvoiceId = Annotated[str, Field(description="Invoice id from ap_list_invoices.")]
 DateArg = Annotated[str | None, Field(description="Date, YYYY-MM-DD.")]
+InvoiceStatus = Literal["UPCOMING", "OVERDUE", "RECEIVED", "PAID", "ARCHIVED"]
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -55,10 +57,7 @@ def _usd(currency: str) -> str:
 def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
     @mcp.tool(annotations=READ_ONLY)
     async def ap_list_invoices(
-        status: Annotated[
-            Literal["UPCOMING", "OVERDUE", "RECEIVED", "PAID", "ARCHIVED"] | None,
-            Field(description="Invoice status."),
-        ] = None,
+        status: Annotated[InvoiceStatus | str | None, Field(description="Invoice status.")] = None,
         customer_id: Annotated[str | None, Field(description="Only this customer's invoices.")] = None,
         limit: Limit = None,
         after: After = None,
@@ -70,7 +69,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
 
         async def action(client: AltPayClient) -> dict:
             params = page_params(limit, after) | {
-                "status": status,
+                "status": enum_value(status, InvoiceStatus),
                 "customer_id": customer_id,
                 "invoice_number": invoice_number,
                 "due_date_start": due_date_start,

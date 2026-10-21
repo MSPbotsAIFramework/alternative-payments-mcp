@@ -20,7 +20,20 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from ..api_client import AltPayClient
-from ._common import CREATES, READ_ONLY, REMOVES, After, ClientFactory, Limit, list_result, page_params, path_id, run_tool, unwrap
+from ._common import (
+    CREATES,
+    READ_ONLY,
+    REMOVES,
+    After,
+    ClientFactory,
+    Limit,
+    enum_value,
+    list_result,
+    page_params,
+    path_id,
+    run_tool,
+    unwrap,
+)
 
 Topic = Literal[
     "payout_paid",
@@ -42,35 +55,34 @@ Topic = Literal[
     "payment_method_deleted",
     "default_payment_method_changed",
 ]
+EventStatus = Literal["pending", "sent", "failed"]
 
 
 def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
     @mcp.tool(annotations=READ_ONLY)
     async def ap_list_webhooks(
         limit: Limit = None,
-        topic: Annotated[Topic | None, Field(description="Event topic.")] = None,
+        topic: Annotated[Topic | str | None, Field(description="Event topic.")] = None,
         after: After = None,
     ) -> str:
         """List webhook subscriptions: id, topic, endpoint URL and whether it is active."""
 
         async def action(client: AltPayClient) -> dict:
-            return list_result(await client.get("/webhooks", page_params(limit, after) | {"topic": topic}))
+            return list_result(await client.get("/webhooks", page_params(limit, after) | {"topic": enum_value(topic, Topic)}))
 
         return await run_tool("ap_list_webhooks", client_factory, action)
 
     @mcp.tool(annotations=READ_ONLY)
     async def ap_list_webhook_events(
         limit: Limit = None,
-        status: Annotated[
-            Literal["pending", "sent", "failed"] | None, Field(description="Delivery status.")
-        ] = None,
-        topic: Annotated[Topic | None, Field(description="Event topic.")] = None,
+        status: Annotated[EventStatus | str | None, Field(description="Delivery status.")] = None,
+        topic: Annotated[Topic | str | None, Field(description="Event topic.")] = None,
         after: After = None,
     ) -> str:
         """List webhook delivery events; status=failed shows deliveries that need a retry."""
 
         async def action(client: AltPayClient) -> dict:
-            params = page_params(limit, after) | {"status": status, "topic": topic}
+            params = page_params(limit, after) | {"status": enum_value(status, EventStatus), "topic": enum_value(topic, Topic)}
             return list_result(await client.get("/webhooks/events", params))
 
         return await run_tool("ap_list_webhook_events", client_factory, action)
@@ -78,7 +90,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
     @mcp.tool(annotations=CREATES)
     async def ap_create_webhook(
         endpoint_url: Annotated[str, Field(description="HTTPS URL that will receive the events.")],
-        topic: Annotated[Topic, Field(description="Event topic to subscribe to.")],
+        topic: Annotated[Topic | str, Field(description="Event topic to subscribe to.")],
         secret_key: Annotated[
             str | None, Field(description="Optional shared secret used to sign deliveries.")
         ] = None,
@@ -88,7 +100,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         async def action(client: AltPayClient) -> Any:
             if not endpoint_url.strip().lower().startswith("https://"):
                 raise ValueError("endpoint_url must be an https URL")
-            body = {"endpoint_url": endpoint_url.strip(), "topic": topic}
+            body = {"endpoint_url": endpoint_url.strip(), "topic": enum_value(topic, Topic)}
             if secret_key:
                 body["secret_key"] = secret_key
             return unwrap(await client.post("/webhooks", body=body))

@@ -191,3 +191,34 @@ async def test_create_webhook_requires_https(monkeypatch):
     result = await _call(monkeypatch, fake, "ap_create_webhook", {"endpoint_url": "http://example.com/hook", "topic": "invoice_paid"})
     assert result["error"]["code"] == "invalid_argument"
     assert fake.requests == []
+
+
+# ---- compatibility: enum params accept any casing (normalized) and unknown values (passed through)
+
+
+@pytest.mark.parametrize(
+    "tool,args,key,sent",
+    [
+        ("ap_list_invoices", {"status": "overdue"}, "status", "OVERDUE"),
+        ("ap_list_invoices", {"status": "VOID"}, "status", "VOID"),
+        ("ap_list_transactions", {"type": "Refund"}, "type", "refund"),
+        ("ap_list_transactions", {"status": "SUCCEEDED"}, "status", "succeeded"),
+        ("ap_list_transactions", {"payment_method": "Card"}, "payment_method", "card"),
+        ("ap_list_transactions", {"payment_method": "wire"}, "payment_method", "wire"),
+        ("ap_list_webhooks", {"topic": "Invoice_Paid"}, "topic", "invoice_paid"),
+        ("ap_list_webhook_events", {"status": "FAILED", "topic": "brand_new_topic"}, "status", "failed"),
+        ("ap_list_webhook_events", {"topic": "brand_new_topic"}, "topic", "brand_new_topic"),
+    ],
+)
+async def test_enum_params_normalize_or_pass_through(monkeypatch, tool, args, key, sent):
+    fake = FakeApi(lambda r: httpx.Response(200, json={"data": [], "has_next_page": False}))
+    result = await _call(monkeypatch, fake, tool, args)
+    assert "error" not in result
+    assert fake.api_requests()[0].url.params[key] == sent
+
+
+@pytest.mark.parametrize("given,sent", [("PAYMENT_FAILED", "payment_failed"), ("future_topic", "future_topic")])
+async def test_create_webhook_topic_normalized_or_passed_through(monkeypatch, given, sent):
+    fake = FakeApi(lambda r: httpx.Response(200, json={"data": {"id": "sub_1"}}))
+    await _call(monkeypatch, fake, "ap_create_webhook", {"endpoint_url": "https://example.com/hook", "topic": given})
+    assert json.loads(fake.api_requests()[0].content)["topic"] == sent

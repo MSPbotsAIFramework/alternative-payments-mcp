@@ -19,10 +19,24 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from ..api_client import AltPayClient
-from ._common import READ_ONLY, After, ClientFactory, Limit, list_result, page_params, path_id, run_tool, unwrap
+from ._common import (
+    READ_ONLY,
+    After,
+    ClientFactory,
+    Limit,
+    enum_value,
+    list_result,
+    page_params,
+    path_id,
+    run_tool,
+    unwrap,
+)
 
 Timestamp = Annotated[str | None, Field(description="RFC 3339 timestamp, e.g. 2026-01-31T00:00:00Z.")]
 PayoutId = Annotated[str, Field(description="Payout id from ap_list_payouts.")]
+TransactionType = Literal["payment", "refund", "chargeback"]
+TransactionStatus = Literal["creating", "processing", "scheduled", "succeeded", "canceled", "failed", "pending"]
+PaymentMethod = Literal["card", "standard_ach", "same_day_ach", "manual"]
 
 
 def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
@@ -31,18 +45,11 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         limit: Limit = None,
         after: After = None,
         before: Annotated[str | None, Field(description="Cursor for the previous page.")] = None,
-        type: Annotated[
-            Literal["payment", "refund", "chargeback"] | None, Field(description="Transaction type.")
-        ] = None,
-        status: Annotated[
-            Literal["creating", "processing", "scheduled", "succeeded", "canceled", "failed", "pending"] | None,
-            Field(description="Transaction status."),
-        ] = None,
+        type: Annotated[TransactionType | str | None, Field(description="Transaction type.")] = None,
+        status: Annotated[TransactionStatus | str | None, Field(description="Transaction status.")] = None,
         customer_id: Annotated[str | None, Field(description="Only this customer.")] = None,
         invoice_id: Annotated[str | None, Field(description="Only this invoice.")] = None,
-        payment_method: Annotated[
-            Literal["card", "standard_ach", "same_day_ach", "manual"] | None, Field(description="Payment method.")
-        ] = None,
+        payment_method: Annotated[PaymentMethod | str | None, Field(description="Payment method.")] = None,
         created_at_start: Timestamp = None,
         created_at_end: Timestamp = None,
     ) -> str:
@@ -54,11 +61,11 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         async def action(client: AltPayClient) -> dict:
             params = page_params(limit, after) | {
                 "before": before,
-                "type": type,
-                "status": status,
+                "type": enum_value(type, TransactionType),
+                "status": enum_value(status, TransactionStatus),
                 "customer_id": customer_id,
                 "invoice_id": invoice_id,
-                "payment_method": payment_method,
+                "payment_method": enum_value(payment_method, PaymentMethod),
                 "created_at_start": created_at_start,
                 "created_at_end": created_at_end,
             }
